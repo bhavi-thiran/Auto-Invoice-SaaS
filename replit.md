@@ -66,8 +66,9 @@ Plan limits enforced via middleware before document creation.
 
 ### Third-Party Services
 - **Replit Auth**: OpenID Connect authentication provider
-- **Stripe**: Payment processing for subscriptions (planned/mock)
-- **WhatsApp Business API**: Message-based document generation (planned)
+- **Stripe**: Payment processing for subscriptions (Pro $19/mo, Business $49/mo)
+- **WhatsApp Business API**: Message-based document generation with natural language parsing
+- **Object Storage**: Company logo storage with presigned URLs
 
 ### Key NPM Packages
 - `drizzle-orm` + `drizzle-kit`: Database ORM and migrations
@@ -87,3 +88,25 @@ Plan limits enforced via middleware before document creation.
 - `SESSION_SECRET`: Secret for session encryption
 - `REPL_ID`: Replit environment identifier (auto-set in Replit)
 - `ISSUER_URL`: OIDC issuer URL (defaults to Replit)
+- `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret for subscription events
+
+## Recent Changes (January 2026)
+
+### Stripe Payment Integration
+- Added `server/stripeClient.ts` for credential management
+- Added `server/webhookHandlers.ts` for processing subscription webhooks
+- Checkout creates subscriptions and stores stripeCustomerId on company
+- Webhooks handle subscription.created/updated/deleted and checkout.session.completed
+- Plan determination falls back to price amount when metadata unavailable
+
+### Company Logo Upload
+- Object storage integration for logo uploads via presigned URLs
+- Settings page has drag-and-drop logo upload with preview
+- Logos stored at `/objects/public/logos/<companyId>/<filename>`
+- PDF generation fetches and embeds logos in document headers
+
+### WhatsApp Message Parsing
+- `server/whatsapp-parser.ts` parses natural language messages into invoice data
+- Supports formats like "Customer: Name", "Item - qty x RM price", "Tax: X%", "Note: text"
+- Webhook automatically creates documents from parsed messages
+- Respects plan limits and usage tracking
