@@ -6,6 +6,11 @@ import { insertDocumentSchema, planLimits, type SubscriptionPlan, type LineItem 
 import { z } from "zod";
 import { seedDemoData } from "./seed";
 import { generateDocumentPDF } from "./pdf";
+import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+import { sql } from "drizzle-orm";
+import { db } from "./db";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { parseWhatsAppMessage, formatInvoiceConfirmation } from "./whatsapp-parser";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -14,6 +19,9 @@ export async function registerRoutes(
   // Setup authentication
   await setupAuth(app);
   registerAuthRoutes(app);
+  
+  // Register object storage routes for file uploads
+  registerObjectStorageRoutes(app);
 
   // Get or create company for authenticated user (with optional seeding)
   const getOrCreateCompany = async (userId: string, shouldSeed = false) => {
@@ -274,6 +282,106 @@ export async function registerRoutes(
     }
   });
 
+  // Stripe - Get publishable key
+  app.get("/api/stripe/config", async (req, res) => {
+    try {
+      const publishableKey = await getStripePublishableKey();
+      res.json({ publishableKey });
+    } catch (error) {
+      console.error("Error getting Stripe config:", error);
+      res.status(500).json({ message: "Failed to get Stripe config" });
+    }
+  });
+
+  // Stripe - Get subscription plans
+  app.get("/api/stripe/plans", async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          p.id as product_id,
+          p.name as product_name,
+          p.description as product_description,
+          p.metadata as product_metadata,
+          pr.id as price_id,
+          pr.unit_amount,
+          pr.currency,
+          pr.recurring
+        FROM stripe.products p
+        LEFT JOIN stripe.prices pr ON pr.product = p.id AND pr.active = true
+        WHERE p.active = true
+        ORDER BY pr.unit_amount ASC
+      `);
+      res.json({ plans: result.rows });
+    } catch (error) {
+      console.error("Error fetching plans:", error);
+      res.status(500).json({ message: "Failed to fetch plans" });
+    }
+  });
+
+  // Stripe - Create checkout session
+  app.post("/api/stripe/checkout", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const userEmail = req.user.claims.email;
+      const company = await getOrCreateCompany(userId);
+      const { priceId } = req.body;
+
+      if (!priceId) {
+        return res.status(400).json({ message: "Price ID is required" });
+      }
+
+      const stripe = await getUncachableStripeClient();
+
+      let customerId = company.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: userEmail,
+          metadata: { companyId: company.id, visibleUserId: userId },
+        });
+        await storage.updateCompany(company.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [{ price: priceId, quantity: 1 }],
+        mode: 'subscription',
+        success_url: `${req.protocol}://${req.get('host')}/settings?tab=subscription&success=true`,
+        cancel_url: `${req.protocol}://${req.get('host')}/settings?tab=subscription&canceled=true`,
+        metadata: { companyId: company.id },
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // Stripe - Customer portal
+  app.post("/api/stripe/portal", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const company = await getOrCreateCompany(userId);
+
+      if (!company.stripeCustomerId) {
+        return res.status(400).json({ message: "No subscription found" });
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const session = await stripe.billingPortal.sessions.create({
+        customer: company.stripeCustomerId,
+        return_url: `${req.protocol}://${req.get('host')}/settings?tab=subscription`,
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating portal session:", error);
+      res.status(500).json({ message: "Failed to create portal session" });
+    }
+  });
+
   // WhatsApp Webhook - Verify (GET)
   app.get("/api/webhook/whatsapp", (req, res) => {
     const mode = req.query["hub.mode"];
@@ -311,16 +419,70 @@ export async function registerRoutes(
                   // Find company by WhatsApp number ID
                   const company = await storage.getCompanyByWhatsappNumber(phoneNumberId);
                   
+                  if (!company) {
+                    console.log(`No company found for WhatsApp number ID: ${phoneNumberId}`);
+                    continue;
+                  }
+
                   // Log the message
-                  await storage.createWhatsappMessage({
-                    companyId: company?.id || null,
+                  const whatsappMessage = await storage.createWhatsappMessage({
+                    companyId: company.id,
                     fromNumber,
                     messageBody,
                   });
                   
-                  // TODO: Parse message and create document
-                  // For now, just log it
-                  console.log(`Received WhatsApp message from ${fromNumber}: ${messageBody}`);
+                  // Parse the message and create document
+                  const parsed = parseWhatsAppMessage(messageBody);
+                  
+                  if (parsed) {
+                    // Check plan limits
+                    const plan = company.subscriptionPlan as SubscriptionPlan;
+                    const limit = planLimits[plan];
+                    if (limit !== Infinity && company.documentsUsedThisMonth >= limit) {
+                      console.log(`Plan limit reached for company ${company.id}`);
+                      continue;
+                    }
+
+                    // Generate document number
+                    const documentNumber = await storage.generateDocumentNumber(
+                      company.id,
+                      parsed.documentType
+                    );
+
+                    // Create the document
+                    const document = await storage.createDocument({
+                      companyId: company.id,
+                      documentNumber,
+                      documentType: parsed.documentType,
+                      customerName: parsed.customerName,
+                      customerPhone: parsed.customerPhone || fromNumber,
+                      lineItems: parsed.lineItems,
+                      subtotal: parsed.subtotal,
+                      taxRate: parsed.taxRate,
+                      taxAmount: parsed.taxAmount,
+                      total: parsed.total,
+                      notes: parsed.notes,
+                      status: "sent",
+                    });
+
+                    // Update message with document ID
+                    await storage.updateWhatsappMessage(whatsappMessage.id, {
+                      parsed: true,
+                      documentId: document.id,
+                    });
+
+                    // Increment usage counter
+                    await storage.incrementDocumentsUsed(company.id);
+
+                    const confirmation = formatInvoiceConfirmation(parsed, documentNumber);
+                    console.log(`Created ${parsed.documentType} ${documentNumber} for ${parsed.customerName}`);
+                    console.log(confirmation);
+                    
+                    // TODO: Send WhatsApp reply with PDF
+                    // This requires WhatsApp Business API credentials to send messages
+                  } else {
+                    console.log(`Could not parse message from ${fromNumber}: ${messageBody}`);
+                  }
                 }
               }
             }

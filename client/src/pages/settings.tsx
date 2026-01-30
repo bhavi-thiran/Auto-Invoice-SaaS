@@ -27,6 +27,7 @@ import {
   Check,
   Loader2,
   AlertCircle,
+  ExternalLink,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -34,6 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/auth-utils";
 import type { Company, SubscriptionPlan } from "@shared/schema";
 import { planLimits, planPrices } from "@shared/schema";
+import { useUpload } from "@/hooks/use-upload";
 
 const companySchema = z.object({
   name: z.string().min(1, "Company name is required"),
@@ -48,6 +50,9 @@ type CompanyFormData = z.infer<typeof companySchema>;
 export default function Settings() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("company");
+  const [isUploading, setIsUploading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const { uploadFile } = useUpload();
 
   const { data: company, isLoading } = useQuery<Company>({
     queryKey: ["/api/company"],
@@ -107,6 +112,97 @@ export default function Settings() {
     updateMutation.mutate(data);
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid file",
+        description: "Please select an image file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const response = await uploadFile(file);
+      if (response?.objectPath) {
+        await apiRequest("PATCH", "/api/company", { logoUrl: response.objectPath });
+        queryClient.invalidateQueries({ queryKey: ["/api/company"] });
+        toast({
+          title: "Logo uploaded",
+          description: "Your company logo has been updated.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload logo. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleUpgrade = async (plan: SubscriptionPlan) => {
+    if (plan === "starter") return;
+    
+    setCheckoutLoading(plan);
+    try {
+      const plansResponse = await fetch("/api/stripe/plans");
+      const { plans } = await plansResponse.json();
+      
+      const planData = plans.find((p: any) => 
+        p.product_metadata?.plan === plan
+      );
+      
+      if (!planData?.price_id) {
+        toast({
+          title: "Plan not available",
+          description: "This subscription plan is not yet configured.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await apiRequest("POST", "/api/stripe/checkout", {
+        priceId: planData.price_id,
+      });
+      const data = await response.json();
+      
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      toast({
+        title: "Checkout failed",
+        description: "Failed to start checkout. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    try {
+      const response = await apiRequest("POST", "/api/stripe/portal", {});
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to open subscription portal.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const currentPlan = (company?.subscriptionPlan || "starter") as SubscriptionPlan;
   const planLimit = planLimits[currentPlan];
   const planPrice = planPrices[currentPlan];
@@ -153,7 +249,7 @@ export default function Settings() {
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                   <div className="flex items-center gap-6 pb-6 border-b">
                     <Avatar className="h-20 w-20">
-                      <AvatarImage src={company?.logoUrl || undefined} />
+                      <AvatarImage src={company?.logoUrl ? (company.logoUrl.startsWith("/") ? company.logoUrl : company.logoUrl) : undefined} />
                       <AvatarFallback className="bg-primary/10 text-primary text-2xl">
                         {company?.name?.[0] || "C"}
                       </AvatarFallback>
@@ -163,12 +259,31 @@ export default function Settings() {
                       <p className="text-sm text-muted-foreground mb-3">
                         Your logo will appear on all generated documents.
                       </p>
-                      <Button variant="outline" size="sm" type="button" disabled>
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload Logo
+                      <Button variant="outline" size="sm" type="button" disabled={isUploading} asChild>
+                        <label className="cursor-pointer">
+                          {isUploading ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-4 w-4 mr-2" />
+                              Upload Logo
+                            </>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleLogoUpload}
+                            disabled={isUploading}
+                            data-testid="input-logo-upload"
+                          />
+                        </label>
                       </Button>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Logo upload coming soon
+                        PNG, JPG up to 10MB
                       </p>
                     </div>
                   </div>
@@ -397,12 +512,27 @@ export default function Settings() {
                     </ul>
 
                     <Button
-                      variant={isCurrentPlan ? "secondary" : "outline"}
+                      variant={isCurrentPlan ? "secondary" : "default"}
                       className="w-full"
-                      disabled={isCurrentPlan}
+                      disabled={isCurrentPlan || checkoutLoading !== null}
+                      onClick={() => isCurrentPlan ? (company?.stripeCustomerId ? handleManageSubscription() : null) : handleUpgrade(plan)}
                       data-testid={`button-plan-${plan}`}
                     >
-                      {isCurrentPlan ? "Current Plan" : "Upgrade"}
+                      {checkoutLoading === plan ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Loading...
+                        </>
+                      ) : isCurrentPlan ? (
+                        company?.stripeCustomerId ? (
+                          <>
+                            Manage
+                            <ExternalLink className="h-4 w-4 ml-2" />
+                          </>
+                        ) : "Current Plan"
+                      ) : (
+                        "Upgrade"
+                      )}
                     </Button>
                   </CardContent>
                 </Card>

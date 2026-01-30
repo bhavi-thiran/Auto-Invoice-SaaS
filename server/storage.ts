@@ -163,6 +163,15 @@ export class DatabaseStorage implements IStorage {
     return company || undefined;
   }
 
+  // Company by Stripe customer ID
+  async getCompanyByStripeCustomerId(stripeCustomerId: string): Promise<Company | undefined> {
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.stripeCustomerId, stripeCustomerId));
+    return company || undefined;
+  }
+
   // Usage tracking
   async incrementDocumentsUsed(companyId: string): Promise<void> {
     await db

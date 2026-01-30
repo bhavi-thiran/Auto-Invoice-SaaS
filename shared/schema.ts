@@ -28,6 +28,8 @@ export const companies = pgTable("companies", {
   email: text("email"),
   logoUrl: text("logo_url"),
   subscriptionPlan: text("subscription_plan").notNull().default("starter"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
   documentsUsedThisMonth: integer("documents_used_this_month").notNull().default(0),
   monthlyResetDate: timestamp("monthly_reset_date").defaultNow(),
   whatsappNumberId: text("whatsapp_number_id"),

@@ -2,10 +2,53 @@ import PDFDocument from "pdfkit";
 import type { Document, Company } from "@shared/schema";
 import { Readable } from "stream";
 
+async function fetchLogoBuffer(logoUrl: string): Promise<Buffer | null> {
+  try {
+    if (!logoUrl) return null;
+    
+    // For object storage paths, fetch from local server
+    let url = logoUrl;
+    if (logoUrl.startsWith('/')) {
+      const baseUrl = process.env.REPLIT_DOMAINS?.split(',')[0] || 
+                      process.env.REPLIT_DEV_DOMAIN ||
+                      'localhost:5000';
+      const protocol = baseUrl.includes('localhost') ? 'http' : 'https';
+      url = `${protocol}://${baseUrl}${logoUrl}`;
+    }
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.log(`Logo fetch failed: ${response.status} for ${url}`);
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') {
+      console.error("Logo fetch timed out");
+    } else {
+      console.error("Error fetching logo:", error);
+    }
+    return null;
+  }
+}
+
 export async function generateDocumentPDF(
   document: Document,
   company: Company
 ): Promise<Buffer> {
+  // Pre-fetch logo if available
+  let logoBuffer: Buffer | null = null;
+  if (company.logoUrl) {
+    logoBuffer = await fetchLogoBuffer(company.logoUrl);
+  }
+
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
@@ -18,9 +61,19 @@ export async function generateDocumentPDF(
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
 
-      // Header
+      // Header with logo
+      let headerStartX = 50;
+      if (logoBuffer) {
+        try {
+          doc.image(logoBuffer, 50, 50, { width: 60, height: 60 });
+          headerStartX = 120;
+        } catch (e) {
+          console.error("Error embedding logo:", e);
+        }
+      }
+      
       doc.fontSize(24).font("Helvetica-Bold");
-      doc.text(company.name || "Company Name", { align: "left" });
+      doc.text(company.name || "Company Name", headerStartX, 50, { align: "left" });
       
       doc.fontSize(10).font("Helvetica");
       if (company.address) {
