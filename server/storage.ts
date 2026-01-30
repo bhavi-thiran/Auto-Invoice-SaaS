@@ -48,14 +48,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCompany(company: InsertCompany): Promise<Company> {
-    const [newCompany] = await db.insert(companies).values(company).returning();
+    // Normalize phone number before storing
+    const normalizedCompany = { ...company };
+    if (normalizedCompany.phone) {
+      normalizedCompany.phone = this.normalizePhone(normalizedCompany.phone);
+    }
+    
+    const [newCompany] = await db.insert(companies).values(normalizedCompany).returning();
     return newCompany;
   }
 
   async updateCompany(id: string, update: Partial<InsertCompany>): Promise<Company | undefined> {
+    // Normalize phone number before storing
+    const normalizedUpdate = { ...update };
+    if (normalizedUpdate.phone) {
+      normalizedUpdate.phone = this.normalizePhone(normalizedUpdate.phone);
+    }
+    
     const [updated] = await db
       .update(companies)
-      .set({ ...update, updatedAt: new Date() })
+      .set({ ...normalizedUpdate, updatedAt: new Date() })
       .where(eq(companies.id, id))
       .returning();
     return updated || undefined;
@@ -170,6 +182,34 @@ export class DatabaseStorage implements IStorage {
       .from(companies)
       .where(eq(companies.stripeCustomerId, stripeCustomerId));
     return company || undefined;
+  }
+
+  // Normalize phone number for consistent storage and lookup
+  normalizePhone(phone: string): string {
+    // Remove spaces, dashes, parentheses
+    return phone.replace(/[\s\-\(\)]/g, '');
+  }
+
+  // Company by phone number (for WhatsApp identification)
+  async getCompanyByPhone(phone: string): Promise<Company | undefined> {
+    const normalizedPhone = this.normalizePhone(phone);
+    
+    // Try exact match with normalized phone
+    let [company] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.phone, normalizedPhone));
+    
+    if (company) return company;
+    
+    // Try matching last 9-10 digits (handles country code variations like +60 vs 60)
+    const lastDigits = normalizedPhone.slice(-10);
+    const [companyByDigits] = await db
+      .select()
+      .from(companies)
+      .where(sql`RIGHT(REGEXP_REPLACE(${companies.phone}, '[^0-9+]', '', 'g'), 10) = ${lastDigits}`);
+    
+    return companyByDigits || undefined;
   }
 
   // Usage tracking

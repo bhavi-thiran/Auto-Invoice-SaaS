@@ -40,9 +40,8 @@ import { useUpload } from "@/hooks/use-upload";
 const companySchema = z.object({
   name: z.string().min(1, "Company name is required"),
   address: z.string().optional(),
-  phone: z.string().optional(),
+  phone: z.string().min(1, "Phone number is required for WhatsApp invoicing"),
   email: z.string().email().optional().or(z.literal("")),
-  whatsappNumberId: z.string().optional(),
 });
 
 type CompanyFormData = z.infer<typeof companySchema>;
@@ -65,14 +64,12 @@ export default function Settings() {
       address: "",
       phone: "",
       email: "",
-      whatsappNumberId: "",
     },
     values: company ? {
       name: company.name || "",
       address: company.address || "",
       phone: company.phone || "",
       email: company.email || "",
-      whatsappNumberId: company.whatsappNumberId || "",
     } : undefined,
   });
 
@@ -322,10 +319,13 @@ export default function Settings() {
                       name="phone"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Phone Number</FormLabel>
+                          <FormLabel>Phone Number (WhatsApp) *</FormLabel>
                           <FormControl>
                             <Input placeholder="+60123456789" {...field} data-testid="input-company-phone" />
                           </FormControl>
+                          <FormDescription>
+                            Use this number to send invoice requests via WhatsApp
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -377,74 +377,63 @@ export default function Settings() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <SiWhatsapp className="h-5 w-5 text-accent" />
-                WhatsApp Integration
+                WhatsApp Invoice Generation
               </CardTitle>
               <CardDescription>
-                Connect your WhatsApp Business account to receive messages and generate documents automatically.
+                Generate invoices instantly by sending a WhatsApp message to AutoInvoice.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                  <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                    <h4 className="font-medium">How it works:</h4>
-                    <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                      <li>Get your WhatsApp Business Number ID from Meta Business Suite</li>
-                      <li>Enter the ID below to link your account</li>
-                      <li>Send messages like: "Invoice for John, 2 items RM100 each"</li>
-                      <li>Receive your generated PDF automatically via WhatsApp</li>
-                    </ol>
-                  </div>
+            <CardContent className="space-y-6">
+              <div className="bg-accent/10 border border-accent/20 rounded-lg p-4 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Check className="h-4 w-4 text-accent" />
+                  How to Generate Invoices via WhatsApp
+                </h4>
+                <ol className="list-decimal list-inside space-y-2 text-sm">
+                  <li><strong>Make sure your phone number is saved</strong> in Company settings</li>
+                  <li><strong>Send a WhatsApp message</strong> to our AutoInvoice number</li>
+                  <li><strong>Include invoice details</strong> in your message</li>
+                  <li><strong>Receive your PDF</strong> automatically via WhatsApp</li>
+                </ol>
+              </div>
 
-                  <FormField
-                    control={form.control}
-                    name="whatsappNumberId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>WhatsApp Number ID</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter your WhatsApp Business Number ID"
-                            {...field}
-                            data-testid="input-whatsapp-id"
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Find this in your Meta Business Suite under WhatsApp settings.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {company?.whatsappNumberId ? (
-                    <div className="flex items-center gap-2 text-sm text-accent">
-                      <Check className="h-4 w-4" />
-                      <span>WhatsApp integration is configured</span>
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Your Registered Phone Number</h4>
+                  {company?.phone ? (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-sm px-3 py-1">
+                        {company.phone}
+                      </Badge>
+                      <Check className="h-4 w-4 text-accent" />
+                      <span className="text-sm text-muted-foreground">Ready to use</span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 text-destructive">
                       <AlertCircle className="h-4 w-4" />
-                      <span>WhatsApp integration not configured yet</span>
+                      <span className="text-sm">Please add your phone number in Company settings first</span>
                     </div>
                   )}
+                </div>
+              </div>
 
-                  <Button
-                    type="submit"
-                    disabled={updateMutation.isPending}
-                    data-testid="button-save-whatsapp"
-                  >
-                    {updateMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      "Save WhatsApp Settings"
-                    )}
-                  </Button>
-                </form>
-              </Form>
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                <h4 className="font-medium">Message Format Examples:</h4>
+                <div className="space-y-2 text-sm font-mono bg-background rounded p-3 border">
+                  <p className="text-muted-foreground"># Simple invoice:</p>
+                  <p>Customer: John Smith</p>
+                  <p>Product A - 2 x RM 50</p>
+                  <p>Service B - 1 x RM 100</p>
+                  <p>Tax: 6%</p>
+                  <p className="text-muted-foreground mt-3"># For quotation, add "quotation":</p>
+                  <p>Quotation for Jane Doe</p>
+                  <p>Item 1 - 3 x RM 25</p>
+                </div>
+              </div>
+
+              <div className="text-sm text-muted-foreground">
+                <p>We identify you by your phone number. Make sure to message us from the same number registered in your account.</p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

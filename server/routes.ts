@@ -400,6 +400,7 @@ export async function registerRoutes(
   });
 
   // WhatsApp Webhook - Receive Messages (POST)
+  // Users message the AutoInvoice WhatsApp number, identified by their registered phone
   app.post("/api/webhook/whatsapp", async (req, res) => {
     try {
       const body = req.body;
@@ -409,19 +410,31 @@ export async function registerRoutes(
           for (const change of entry.changes || []) {
             if (change.field === "messages") {
               const value = change.value;
-              const phoneNumberId = value.metadata?.phone_number_id;
               
               for (const message of value.messages || []) {
                 if (message.type === "text") {
-                  const fromNumber = message.from;
+                  const fromNumber = message.from; // User's WhatsApp number
                   const messageBody = message.text?.body || "";
                   
-                  // Find company by WhatsApp number ID
-                  const company = await storage.getCompanyByWhatsappNumber(phoneNumberId);
+                  // Find company by sender's phone number (registered in their profile)
+                  const company = await storage.getCompanyByPhone(fromNumber);
                   
                   if (!company) {
-                    console.log(`No company found for WhatsApp number ID: ${phoneNumberId}`);
+                    console.log(`No registered user found for phone: ${fromNumber}`);
+                    // TODO: Send welcome message with signup link
                     continue;
+                  }
+
+                  // Check if user has an active subscription
+                  const plan = company.subscriptionPlan as SubscriptionPlan;
+                  if (plan === 'starter') {
+                    // Check if they've exceeded free tier limits
+                    const limit = planLimits[plan];
+                    if (company.documentsUsedThisMonth >= limit) {
+                      console.log(`Free tier limit reached for ${company.name}. Please upgrade.`);
+                      // TODO: Send upgrade message
+                      continue;
+                    }
                   }
 
                   // Log the message
@@ -436,7 +449,6 @@ export async function registerRoutes(
                   
                   if (parsed) {
                     // Check plan limits
-                    const plan = company.subscriptionPlan as SubscriptionPlan;
                     const limit = planLimits[plan];
                     if (limit !== Infinity && company.documentsUsedThisMonth >= limit) {
                       console.log(`Plan limit reached for company ${company.id}`);
@@ -475,13 +487,13 @@ export async function registerRoutes(
                     await storage.incrementDocumentsUsed(company.id);
 
                     const confirmation = formatInvoiceConfirmation(parsed, documentNumber);
-                    console.log(`Created ${parsed.documentType} ${documentNumber} for ${parsed.customerName}`);
+                    console.log(`Created ${parsed.documentType} ${documentNumber} for ${company.name}`);
                     console.log(confirmation);
                     
-                    // TODO: Send WhatsApp reply with PDF
-                    // This requires WhatsApp Business API credentials to send messages
+                    // TODO: Send WhatsApp reply with PDF using WhatsApp Business API
                   } else {
                     console.log(`Could not parse message from ${fromNumber}: ${messageBody}`);
+                    // TODO: Send help message with format instructions
                   }
                 }
               }
