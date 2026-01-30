@@ -40,12 +40,12 @@ export default function Landing() {
 
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <a href="/api/login">
+            <a href="/login">
               <Button variant="outline" size="sm" data-testid="button-login">
                 Log In
               </Button>
             </a>
-            <a href="/api/login">
+            <a href="/register">
               <Button size="sm" data-testid="button-get-started">
                 Get Started
                 <ArrowRight className="ml-1 h-4 w-4" />
@@ -74,7 +74,7 @@ export default function Landing() {
               </p>
 
               <div className="flex flex-wrap gap-3">
-                <a href="/api/login">
+                <a href="/register">
                   <Button size="lg" data-testid="button-hero-cta">
                     Start Free
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -308,7 +308,7 @@ export default function Landing() {
                     Company branding
                   </li>
                 </ul>
-                <a href="/api/login" className="block">
+                <a href="/register" className="block">
                   <Button variant="outline" className="w-full">
                     Get Started
                   </Button>
@@ -343,7 +343,7 @@ export default function Landing() {
                     Custom logo on PDFs
                   </li>
                 </ul>
-                <a href="/api/login" className="block">
+                <a href="/register" className="block">
                   <Button className="w-full">
                     Start Pro Trial
                   </Button>
@@ -375,7 +375,7 @@ export default function Landing() {
                     API access
                   </li>
                 </ul>
-                <a href="/api/login" className="block">
+                <a href="/register" className="block">
                   <Button variant="outline" className="w-full">
                     Contact Sales
                   </Button>

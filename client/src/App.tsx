@@ -9,6 +9,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import Landing from "@/pages/landing";
+import Login from "@/pages/login";
+import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
 import Documents from "@/pages/documents";
 import Settings from "@/pages/settings";
@@ -82,6 +84,24 @@ function Router() {
           </AuthenticatedLayout>
         ) : (
           <Landing />
+        )}
+      </Route>
+      <Route path="/login">
+        {isAuthenticated ? (
+          <AuthenticatedLayout>
+            <Dashboard />
+          </AuthenticatedLayout>
+        ) : (
+          <Login />
+        )}
+      </Route>
+      <Route path="/register">
+        {isAuthenticated ? (
+          <AuthenticatedLayout>
+            <Dashboard />
+          </AuthenticatedLayout>
+        ) : (
+          <Register />
         )}
       </Route>
       <Route path="/dashboard">

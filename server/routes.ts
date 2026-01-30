@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
+import { setupAuth, isAuthenticated, getUserId } from "./auth";
 import { insertDocumentSchema, planLimits, type SubscriptionPlan, type LineItem } from "@shared/schema";
 import { z } from "zod";
 import { seedDemoData } from "./seed";
@@ -16,9 +16,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Setup authentication
-  await setupAuth(app);
-  registerAuthRoutes(app);
+  // Setup authentication (email/password)
+  setupAuth(app);
   
   // Register object storage routes for file uploads
   registerObjectStorageRoutes(app);
@@ -57,7 +56,7 @@ export async function registerRoutes(
   // Dashboard stats
   app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId, true); // Enable seeding for dashboard
       
       const counts = await storage.getDocumentCountByType(company.id);
@@ -80,7 +79,7 @@ export async function registerRoutes(
   // Get company profile
   app.get("/api/company", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId);
       res.json(company);
     } catch (error) {
@@ -92,7 +91,7 @@ export async function registerRoutes(
   // Update company profile
   app.patch("/api/company", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId);
       
       const updateSchema = z.object({
@@ -120,7 +119,7 @@ export async function registerRoutes(
   // Get all documents
   app.get("/api/documents", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId);
       const documents = await storage.getDocumentsByCompanyId(company.id);
       res.json(documents);
@@ -133,7 +132,7 @@ export async function registerRoutes(
   // Get single document
   app.get("/api/documents/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId);
       const document = await storage.getDocumentById(req.params.id);
       
@@ -151,7 +150,7 @@ export async function registerRoutes(
   // Create document
   app.post("/api/documents", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId);
       
       // Check plan limits
@@ -218,7 +217,7 @@ export async function registerRoutes(
   // Download document PDF
   app.get("/api/documents/:id/pdf", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId);
       const document = await storage.getDocumentById(req.params.id);
       
@@ -243,7 +242,7 @@ export async function registerRoutes(
   // Update document
   app.patch("/api/documents/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId);
       const document = await storage.getDocumentById(req.params.id);
       
@@ -321,7 +320,7 @@ export async function registerRoutes(
   // Stripe - Create checkout session
   app.post("/api/stripe/checkout", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const userEmail = req.user.claims.email;
       const company = await getOrCreateCompany(userId);
       const { priceId } = req.body;
@@ -362,7 +361,7 @@ export async function registerRoutes(
   // Stripe - Customer portal
   app.post("/api/stripe/portal", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const company = await getOrCreateCompany(userId);
 
       if (!company.stripeCustomerId) {
