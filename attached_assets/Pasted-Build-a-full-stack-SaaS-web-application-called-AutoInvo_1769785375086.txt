@@ -1,0 +1,197 @@
+Build a full-stack SaaS web application called AutoInvoice with the following features:
+
+🌐 Core Purpose
+
+The system allows small business owners to generate Invoices, Quotations, and Receipts by sending a WhatsApp message. The system automatically creates a PDF document with their company logo and sends it back via WhatsApp.
+
+👤 User Accounts & Authentication
+
+Users can sign up and log in
+
+Use email + password authentication
+
+Store users in a database
+
+Each user has:
+
+Name
+
+Email
+
+Password (hashed)
+
+Subscription plan
+
+WhatsApp assigned number ID
+
+Company details
+
+Company logo (image upload)
+
+💳 Subscription & Payments
+
+Integrate Stripe (or mock payment system for now)
+
+3 plans:
+
+Starter – limited documents per month
+
+Pro – more documents
+
+Business – unlimited documents
+
+Middleware should restrict document generation if user exceeds plan limit
+
+🏢 Company Profile Setup
+
+After login, user can fill in:
+
+Company Name
+
+Company Address
+
+Phone Number
+
+Email
+
+Upload Company Logo
+
+Logo must be stored and used in the PDF header.
+
+💬 WhatsApp Integration (Important)
+
+Use WhatsApp Business Cloud API (Meta)
+
+The system must:
+
+Provide each user with an assigned WhatsApp number or ID
+
+Set up a webhook endpoint to receive incoming WhatsApp messages
+
+When a user sends a message like:
+
+"Invoice for Ali, 2 aircond services RM150 each"
+
+The system should:
+
+Identify which user sent it (based on WhatsApp number)
+
+Extract:
+
+Customer name
+
+Items
+
+Quantity
+
+Price
+
+Save this as a new invoice in the database
+
+📄 PDF Generation
+
+Generate a professional PDF using a backend PDF library.
+
+PDF must include:
+
+Company logo at the top
+
+Company details
+
+Document type (Invoice / Quotation / Receipt)
+
+Unique document number
+
+Date
+
+Customer name
+
+Item table (description, quantity, price, total)
+
+Grand total
+
+Save PDF file path in database.
+
+📤 Send PDF Back via WhatsApp
+
+After generating the PDF:
+
+Use WhatsApp Cloud API to send a message
+
+Attach the generated PDF
+
+Message example:
+
+"Here is your invoice. Thank you for using AutoInvoice."
+
+🗂 Dashboard (Web App)
+
+After login, user should see:
+
+Dashboard Page
+
+Total invoices created
+
+Remaining documents in plan
+
+Documents Page
+
+List of all generated:
+
+Invoices
+
+Quotations
+
+Receipts
+
+Download PDF button
+
+Settings Page
+
+Edit company details
+
+Upload/change logo
+
+View subscription plan
+
+🛠 Tech Requirements
+
+Use:
+
+Backend: Node.js with Express
+
+Frontend: React
+
+Database: PostgreSQL or SQLite
+
+Auth: JWT or session-based
+
+File Storage: Local storage (or cloud-ready structure)
+
+PDF Library: pdf-lib or PDFKit
+
+WhatsApp API integration structure (with placeholders for API keys)
+
+🔐 Security
+
+Protect routes with authentication
+
+Users can only see their own documents
+
+Validate WhatsApp webhook requests
+
+📦 Deliverables
+
+The project should include:
+
+Backend API
+
+Frontend React UI
+
+Database models
+
+WhatsApp webhook endpoint
+
+PDF generation logic
+
+Example environment variable file (.env.example)
