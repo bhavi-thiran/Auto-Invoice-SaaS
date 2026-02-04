@@ -15,14 +15,19 @@ declare module "express-session" {
 const SALT_ROUNDS = 12;
 
 export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  const sessionTtlSeconds = 7 * 24 * 60 * 60; // 1 week (SECONDS)
+  const sessionTtlMs = sessionTtlSeconds * 1000;
+
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
+    createTableIfMissing: true, // IMPORTANT (unless you already created it)
+    ttl: sessionTtlSeconds,
     tableName: "sessions",
   });
+
+  const isProd = process.env.NODE_ENV === "production";
+
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
@@ -30,8 +35,9 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
-      maxAge: sessionTtl,
+      secure: isProd, // ✅ only true on https
+      sameSite: "lax", // ✅ good for same-site app
+      maxAge: sessionTtlMs, // ✅ ms for cookie
     },
   });
 }
@@ -45,9 +51,9 @@ export function setupAuth(app: Express) {
     try {
       const result = registerSchema.safeParse(req.body);
       if (!result.success) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: result.error.flatten().fieldErrors 
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: result.error.flatten().fieldErrors,
         });
       }
 
@@ -97,9 +103,9 @@ export function setupAuth(app: Express) {
     try {
       const result = loginSchema.safeParse(req.body);
       if (!result.success) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: result.error.flatten().fieldErrors 
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: result.error.flatten().fieldErrors,
         });
       }
 
